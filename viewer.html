@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Camera Viewer</title>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    video {
+      width: 640px;
+      height: 480px;
+      background: black;
+      border: 1px solid #ccc;
+      margin-top: 10px;
+    }
+    button {
+      padding: 8px 14px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Camera Viewer</h2>
+  <p>Sender ID: <strong>camera-sender</strong></p>
+
+  <button id="connectBtn" disabled>Connecting...</button>
+  <br><br>
+
+  <video id="remoteVideo" autoplay muted playsinline></video>
+
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script>
+    const video = document.getElementById('remoteVideo');
+    const connectBtn = document.getElementById('connectBtn');
+
+    const peer = new Peer();
+
+    peer.on('open', id => {
+      console.log('Viewer peer opened:', id);
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect';
+    });
+
+    connectBtn.onclick = () => {
+      console.log('Calling camera-sender');
+
+      // 🔑 더미 비디오 트랙 생성 (권한 없음)
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      ctx.fillRect(0, 0, 1, 1);
+
+      const dummyStream = canvas.captureStream(1);
+
+      const call = peer.call('camera-sender', dummyStream);
+
+      if (!call) {
+        console.error('Call failed');
+        return;
+      }
+
+      call.on('stream', remoteStream => {
+        console.log('Remote stream received');
+        console.log('Tracks:', remoteStream.getTracks());
+
+        video.srcObject = remoteStream;
+
+        video.onloadedmetadata = () => {
+          video.play();
+        };
+      });
+
+      call.on('error', err => {
+        console.error('Call error:', err);
+      });
+    };
+  </script>
+
+</body>
+</html>
