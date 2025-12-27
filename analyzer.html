@@ -65,32 +65,65 @@
   const connectBtn = document.getElementById('connectBtn');
 
   const peer = new Peer();
-  let model;
-  let analysisTimer = null;
+  let model = null;
+  let timer = null;
 
+  /* ===============================
+     더미 video track 생성 (핵심)
+  =============================== */
+  async function createDummyStream() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 1, 1);
+    return canvas.captureStream(1);
+  }
+
+  /* ===============================
+     카메라 연결
+  =============================== */
   connectBtn.onclick = async () => {
-    const emptyStream = new MediaStream();
-    const call = peer.call('camera-sender', emptyStream);
+    const dummyStream = await createDummyStream();
+    const call = peer.call('camera-sender', dummyStream);
+
+    if (!call) {
+      console.error('Call failed');
+      return;
+    }
 
     call.on('stream', stream => {
+      console.log('Analyzer received stream');
+
       video.srcObject = stream;
 
       video.onloadedmetadata = async () => {
-        await video.play();   // ★ 매우 중요
+        await video.play();
         await loadModel();
 
-        if (analysisTimer) clearInterval(analysisTimer);
-        analysisTimer = setInterval(analyzeFrame, 500);
+        if (timer) clearInterval(timer);
+        timer = setInterval(analyzeFrame, 500);
       };
     });
   };
 
+  /* ===============================
+     Teachable Machine 로드
+  =============================== */
   async function loadModel() {
-    const modelURL = 'https://teachablemachine.withgoogle.com/models/XXXXX/model.json';
-    const metadataURL = 'https://teachablemachine.withgoogle.com/models/XXXXX/metadata.json';
+    const modelURL =
+      'https://teachablemachine.withgoogle.com/models/XXXXX/model.json';
+    const metadataURL =
+      'https://teachablemachine.withgoogle.com/models/XXXXX/metadata.json';
+
     model = await tmImage.load(modelURL, metadataURL);
+    console.log('Model loaded');
   }
 
+  /* ===============================
+     Canvas 설정
+  =============================== */
   const leftCanvas = document.getElementById('leftCanvas');
   const centerCanvas = document.getElementById('centerCanvas');
   const rightCanvas = document.getElementById('rightCanvas');
@@ -99,12 +132,15 @@
   const cctx = centerCanvas.getContext('2d');
   const rctx = rightCanvas.getContext('2d');
 
+  /* ===============================
+     프레임 분석
+  =============================== */
   async function analyzeFrame() {
     if (!model) return;
 
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    if (vw === 0 || vh === 0) return;
+    if (!vw || !vh) return;
 
     const part = vw / 3;
 
@@ -119,6 +155,9 @@
     updateUI(L, C, R);
   }
 
+  /* ===============================
+     결과 처리
+  =============================== */
   function getScores(pred) {
     const fire = pred.find(p => p.className === 'fire').probability;
     const forest = pred.find(p => p.className === 'forest').probability;
@@ -131,17 +170,17 @@
     const R = getScores(r);
 
     leftResult.textContent =
-      `Fire ${(L.fire*100).toFixed(1)}% / Forest ${(L.forest*100).toFixed(1)}%`;
+      `Fire ${(L.fire * 100).toFixed(1)}% / Forest ${(L.forest * 100).toFixed(1)}%`;
     centerResult.textContent =
-      `Fire ${(C.fire*100).toFixed(1)}% / Forest ${(C.forest*100).toFixed(1)}%`;
+      `Fire ${(C.fire * 100).toFixed(1)}% / Forest ${(C.forest * 100).toFixed(1)}%`;
     rightResult.textContent =
-      `Fire ${(R.fire*100).toFixed(1)}% / Forest ${(R.forest*100).toFixed(1)}%`;
+      `Fire ${(R.fire * 100).toFixed(1)}% / Forest ${(R.forest * 100).toFixed(1)}%`;
 
     const safest = [
       { name: 'LEFT', score: L.forest },
       { name: 'CENTER', score: C.forest },
       { name: 'RIGHT', score: R.forest }
-    ].sort((a,b)=>b.score-a.score)[0];
+    ].sort((a, b) => b.score - a.score)[0];
 
     summary.textContent = `Safest area: ${safest.name}`;
   }
