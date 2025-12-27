@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Fire Analyzer</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .panel {
+      text-align: center;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      display: block;
+    }
+    .result {
+      margin-top: 6px;
+      font-size: 14px;
+    }
+    #summary {
+      margin-top: 20px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Fire / Forest Analyzer</h2>
+
+<button id="connectBtn">Connect Camera</button>
+
+<br><br>
+
+<video id="remoteVideo" autoplay muted playsinline style="display:none;"></video>
+
+<div class="container">
+  <div class="panel">
+    <canvas id="leftCanvas" width="160" height="120"></canvas>
+    <div class="result" id="leftResult">-</div>
+  </div>
+  <div class="panel">
+    <canvas id="centerCanvas" width="160" height="120"></canvas>
+    <div class="result" id="centerResult">-</div>
+  </div>
+  <div class="panel">
+    <canvas id="rightCanvas" width="160" height="120"></canvas>
+    <div class="result" id="rightResult">-</div>
+  </div>
+</div>
+
+<div id="summary">Waiting...</div>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+<script>
+  /* ==============================
+     1. WebRTC 연결
+  ============================== */
+
+  const video = document.getElementById('remoteVideo');
+  const connectBtn = document.getElementById('connectBtn');
+
+  const peer = new Peer();
+  let model;
+
+  connectBtn.onclick = async () => {
+    const emptyStream = new MediaStream();
+    const call = peer.call('camera-sender', emptyStream);
+
+    call.on('stream', stream => {
+      video.srcObject = stream;
+      startAnalysis();
+    });
+  };
+
+  /* ==============================
+     2. Teachable Machine 로드
+  ============================== */
+
+  async function loadModel() {
+    const modelURL = 'https://teachablemachine.withgoogle.com/models/8UUfr2f-V/model.json';
+    const metadataURL = 'https://teachablemachine.withgoogle.com/models/8UUfr2f-V/metadata.json';
+
+    model = await tmImage.load(modelURL, metadataURL);
+    console.log('Model loaded');
+  }
+
+  /* ==============================
+     3. 프레임 분할 & 분석
+  ============================== */
+
+  const leftCanvas = document.getElementById('leftCanvas');
+  const centerCanvas = document.getElementById('centerCanvas');
+  const rightCanvas = document.getElementById('rightCanvas');
+
+  const lctx = leftCanvas.getContext('2d');
+  const cctx = centerCanvas.getContext('2d');
+  const rctx = rightCanvas.getContext('2d');
+
+  async function analyzeFrame() {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    const part = vw / 3;
+
+    lctx.drawImage(video, 0, 0, part, vh, 0, 0, 160, 120);
+    cctx.drawImage(video, part, 0, part, vh, 0, 0, 160, 120);
+    rctx.drawImage(video, part * 2, 0, part, vh, 0, 0, 160, 120);
+
+    const left = await model.predict(leftCanvas);
+    const center = await model.predict(centerCanvas);
+    const right = await model.predict(rightCanvas);
+
+    updateUI(left, center, right);
+  }
+
+  /* ==============================
+     4. 결과 출력
+  ============================== */
+
+  function getScores(pred) {
+    const fire = pred.find(p => p.className === 'fire').probability;
+    const forest = pred.find(p => p.className === 'forest').probability;
+    return { fire, forest };
+  }
+
+  function updateUI(l, c, r) {
+    const L = getScores(l);
+    const C = getScores(c);
+    const R = getScores(r);
+
+    document.getElementById('leftResult').textContent =
+      `Fire ${(L.fire*100).toFixed(1)}% / Forest ${(L.forest*100).toFixed(1)}%`;
+
+    document.getElementById('centerResult').textContent =
+      `Fire ${(C.fire*100).toFixed(1)}% / Forest ${(C.forest*100).toFixed(1)}%`;
+
+    document.getElementById('rightResult').textContent =
+      `Fire ${(R.fire*100).toFixed(1)}% / Forest ${(R.forest*100).toFixed(1)}%`;
+
+    const safest = [
+      { name: 'LEFT', score: L.forest },
+      { name: 'CENTER', score: C.forest },
+      { name: 'RIGHT', score: R.forest }
+    ].sort((a,b)=>b.score-a.score)[0];
+
+    document.getElementById('summary').textContent =
+      `Safest area: ${safest.name}`;
+  }
+
+  /* ==============================
+     5. 전체 시작
+  ============================== */
+
+  async function startAnalysis() {
+    await loadModel();
+    setInterval(analyzeFrame, 500);
+  }
+</script>
+
+</body>
+</html>
