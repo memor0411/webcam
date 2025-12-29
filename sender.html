@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Camera Sender</title>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    video {
+      width: 640px;
+      border: 1px solid #ccc;
+      margin-top: 10px;
+    }
+    .id-box {
+      background: #eee;
+      padding: 6px 10px;
+      font-family: monospace;
+      user-select: text;
+      display: inline-block;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Camera Sender</h2>
+
+  <div>
+    <strong>Sender ID:</strong>
+    <span class="id-box">camera-sender</span>
+  </div>
+
+  <video id="localVideo" autoplay muted playsinline></video>
+
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script>
+    const video = document.getElementById('localVideo');
+
+    async function start() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
+      });
+
+      video.srcObject = stream;
+
+      const peer = new Peer('camera-sender');
+
+      peer.on('open', id => {
+        console.log('Sender opened:', id);
+      });
+
+      peer.on('call', call => {
+        console.log('Incoming call');
+        call.answer(stream);
+      });
+
+      peer.on('error', err => {
+        console.error('Sender peer error:', err);
+      });
+    }
+
+    start();
+  </script>
+
+</body>
+</html>
